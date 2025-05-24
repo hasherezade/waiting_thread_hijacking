@@ -65,3 +65,20 @@ inline std::string writeInt(ULONGLONG val, bool as_hex)
     ss << (as_hex ? std::hex : std::dec) << val;
     return ss.str();
 }
+
+inline BYTE* load_from_file(const char* filename, size_t& data_size)
+{
+    FILE* fp = fopen(filename, "rb");
+    if (!fp) return nullptr;
+
+    fseek(fp, 0, SEEK_END);
+    size_t fsize = ftell(fp);
+    BYTE* data = (BYTE*)::calloc(fsize, 1);
+    if (!data) return nullptr;
+
+    fseek(fp, 0, SEEK_SET);
+    data_size = fsize;
+    fread(data, 1, data_size, fp);
+    fclose(fp);
+    return data;
+}
