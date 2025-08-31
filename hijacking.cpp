@@ -139,7 +139,7 @@ LPVOID alloc_memory_in_process(DWORD processID, const size_t shellcode_size)
     return shellcodePtr;
 }
 
-bool write_shc_into_process(DWORD processID, LPVOID shellcodePtr, const BYTE *shellc_buf, const size_t shellc_size)
+bool write_buf_into_process(DWORD processID, LPVOID shellcodePtr, const BYTE *shellc_buf, const size_t shellc_size)
 {
     if (!shellcodePtr) return false;
 

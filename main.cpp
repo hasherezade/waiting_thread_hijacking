@@ -46,7 +46,7 @@ BYTE* wrap_shellcode2(OUT size_t& wrapped_shc_size, LPVOID shellc2)
 inline bool execute_injection(DWORD processID, BYTE* shellcode_buf, size_t shellcode_size)
 {
     LPVOID shellcodePtr = alloc_memory_in_process(processID, shellcode_size);
-    if (!write_shc_into_process(processID, shellcodePtr, shellcode_buf, shellcode_size)) {
+    if (!write_buf_into_process(processID, shellcodePtr, shellcode_buf, shellcode_size)) {
         return false;
     }
     return run_injected(processID, (ULONG_PTR)shellcodePtr, shellcode_size, g_WaitReason);
@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
     if (new_thread) {
         std::cout << "The passed shellcode will run in a new thread\n";
         LPVOID shellc2 = alloc_memory_in_process(processID, payload_size);
-        if (!write_shc_into_process(processID, shellc2, payload, payload_size)) {
+        if (!write_buf_into_process(processID, shellc2, payload, payload_size)) {
             std::cerr << "Failed writing Shc2!\n";
             return (-2);
         }
